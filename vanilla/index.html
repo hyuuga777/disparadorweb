@@ -1,0 +1,116 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Cyborg Disparos</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+
+<body>
+    <div class="main-wrapper">
+        <div id="viewMain" class="view-container">
+            <div class="glass-header" style="position: relative; padding: 15px 20px; border-bottom: 1px solid var(--color-slate-200); background: white;">
+                <div class="flex items-center w-full relative" style="justify-content: center; min-height: 45px;">
+                    <div class="logo-circle" style="width: 45px; height: 45px; position: absolute; left: 0;">
+                        <img src="logo-solo.png" style="width: 100%; height: 100%; object-fit: contain;" alt="Logo">
+                    </div>
+                    <div class="flex flex-col" style="align-items: center; z-index: 10;">
+                        <span class="header-title" style="font-weight: 800; color: var(--color-royal); font-size: 1.35rem; line-height: 1.2;">Cyborg Disparos</span>
+                        <span style="font-size: 0.85rem; color: #000000; font-weight: 700;">by <a href="https://agenciacyborg.com/" target="_blank" style="color: inherit; text-decoration: none;">Agência Cyborg</a></span>
+                    </div>
+                    <div id="statusDot" class="status-indicator" style="position: absolute; right: 0;"></div>
+                </div>
+            </div>
+
+            <!-- Scrollable Content -->
+            <div class="scroll-area">
+
+                <!-- CSV Upload Card -->
+                <div class="card clickable" id="dropZone">
+                    <div class="flex items-center gap-4">
+                        <div class="icon-box">
+                            <span style="font-size: 20px;">📄</span>
+                        </div>
+                        <div class="flex flex-col">
+                            <span class="card-label" id="csvLabel">Carregar Lista (CSV)</span>
+                            <span style="font-size: 10px; color: var(--color-slate-400);">Nome, Telefone</span>
+                        </div>
+                    </div>
+                    <input type="file" id="csvFile" accept=".csv" class="hidden-view">
+                </div>
+
+                <!-- AI Config Card -->
+                <div class="card">
+                    <div class="switch-container">
+                        <span class="card-label">Inteligência Artificial</span>
+                        <label class="switch">
+                            <input type="checkbox" id="chkUseAI">
+                            <span class="slider"></span>
+                        </label>
+                    </div>
+                    <div id="aiInputs" class="flex flex-col gap-2 mt-1">
+                        <input type="password" id="apiKeyMain" placeholder="Sua Gemini API Key">
+                    </div>
+                </div>
+
+                <!-- Delay Card -->
+                <div class="card">
+                    <span class="card-label">Atraso entre Envios (ms)</span>
+                    <input type="number" id="delayInput" value="3000">
+                </div>
+
+
+                <!-- Template Card -->
+                <div class="card">
+                    <span class="card-label">Mensagem Base</span>
+                    <textarea id="baseMessage" style="height: 96px;"
+                        placeholder="Olá {{nome}}, temos novidades..."></textarea>
+                    <p class="small-label">Use {{nome}} para personalizar via IA ou simples substituição.</p>
+                </div>
+
+                <!-- Media Card (Double) -->
+                <div class="card">
+                    <div class="flex flex-col gap-4">
+                        <div class="flex-1">
+                            <span class="card-label">Imagem/Vídeo</span>
+                            <input type="file" id="mediaFile" class="mt-1 w-full" style="font-size: 10px;">
+                        </div>
+                        <div class="flex-1">
+                            <span class="card-label">Áudio</span>
+                            <input type="file" id="audioFile" accept="audio/*" class="mt-1 w-full"
+                                style="font-size: 10px;">
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Live Logs -->
+                <div id="logContainer" class="log-box hidden-view"></div>
+
+                <!-- Action Buttons -->
+                <div class="mt-4 pb-4 flex flex-col gap-3">
+                    <div id="progressCounterContainer" class="hidden-view text-center" style="font-weight: 600; color: var(--color-royal); font-size: 0.95rem; margin-bottom: 4px;">
+                        Enviados: <span id="progressCount">0</span> de <span id="progressTotal">0</span>
+                    </div>
+
+                    <button id="btnSend" disabled class="btn-primary w-full shadow-lg">
+                        <span>🚀</span>
+                        <span id="labelSend">INICIAR DISPAROS</span>
+                    </button>
+
+                    <button id="btnStop" class="hidden-view btn-stop">
+                        <span>⏹️</span>
+                        <span>PARAR ENVIO</span>
+                    </button>
+
+                    <p id="statusFeedback" class="feedback-text"></p>
+                </div>
+            </div> <!-- End scroll-area -->
+        </div> <!-- End viewMain -->
+    </div> <!-- End main-wrapper -->
+
+    <script src="popup.js"></script>
+</body>
+
+</html>
