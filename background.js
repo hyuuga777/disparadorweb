@@ -19,24 +19,30 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
       audio: payload.audio_base64,
     };
 
-    if (!isProcessing) {
-      isProcessing = true;
-      contactCounter = 0; // Reseta ao iniciar
-      initializeQueue();
-    }
+    chrome.storage.local.remove('active_task', () => {
+      if (!isProcessing) {
+        isProcessing = true;
+        contactCounter = 0; // Reseta ao iniciar
+        initializeQueue();
+      }
+    });
   } else if (request.action === 'STOP_QUEUE') {
     isProcessing = false;
     queue = [];
+    chrome.storage.local.remove('active_task');
     chrome.runtime.sendMessage({ action: 'STATUS_UPDATE', message: '🛑 Fila interrompida.', type: 'error' });
   } else if (request.action === 'STEP_COMPLETED') {
+    chrome.storage.local.remove('active_task');
     chrome.runtime.sendMessage({ action: 'MESSAGE_SENT', message: 'Mensagem enviada!' });
     if (queue.length === 0) finishQueue();
     else handleNextStep();
   } else if (request.action === 'STEP_ERROR') {
+    chrome.storage.local.remove('active_task');
     chrome.runtime.sendMessage({ action: 'ERROR', message: `❌ Erro: ${request.error}` });
     if (queue.length === 0) finishQueue();
     else handleNextStep();
   } else if (request.action === 'STATUS_INVALID_NUMBER') {
+    chrome.storage.local.remove('active_task');
     chrome.runtime.sendMessage({ action: 'ERROR', message: `❌ Número sem WhatsApp.` });
     setTimeout(() => {
       processQueue();
@@ -151,7 +157,24 @@ async function processQueue() {
       timestamp: Date.now(),
     };
 
-    await chrome.tabs.sendMessage(currentTabId, { action: 'NAVIGATE_AND_SEND', task });
+    // Salva o active_task no storage local antes de despachar o envio
+    chrome.storage.local.set({ active_task: task }, async () => {
+      try {
+        await chrome.tabs.sendMessage(currentTabId, { action: 'NAVIGATE_AND_SEND', task });
+      } catch (err) {
+        console.warn("⚠️ Content script não respondeu. Forçando navegação via URL...", err);
+        // Fallback: Se o content script não respondeu (ex: aba acabou de recarregar ou descarregada),
+        // navegamos diretamente a aba. O content script injetado recuperará a tarefa do storage no startup.
+        try {
+          chrome.tabs.update(currentTabId, { url: `https://web.whatsapp.com/send?phone=${task.phone}` });
+        } catch (updateErr) {
+          console.error("❌ Falha crítica ao forçar navegação de aba:", updateErr);
+          chrome.runtime.sendMessage({ action: 'ERROR', message: `Falha crítica ao abrir aba para ${contact.name}` });
+          if (queue.length === 0) finishQueue();
+          else handleNextStep();
+        }
+      }
+    });
   } catch (error) {
     chrome.runtime.sendMessage({ action: 'ERROR', message: `Falha em ${contact.name}: ${error.message}` });
     if (queue.length === 0) finishQueue();

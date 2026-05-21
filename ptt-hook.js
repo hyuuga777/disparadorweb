@@ -2,23 +2,53 @@
   console.log("🎤 [Cyborg] Webpack Hook ativado para PTT no MAIN world via Manifest...");
   
   function patchModule(exports) {
+    if (!exports || typeof exports !== 'object') return;
+    
     // Lista de funções que o WhatsApp usa para processar mídia e que podem conter a flag PTT
     const targets = ['prepRawMedia', 'createOpaqueDataForRawMedia', 'processRawAudio', 'prepareRawAudio'];
     
     targets.forEach(target => {
-      if (exports && exports[target]) {
-        const original = exports[target];
-        exports[target] = function(file, options) {
-          // Se o arquivo for o nosso áudio gravado ou qualquer áudio vindo da extensão
-          if (file && (file.name === "recorded_audio.ogg" || (file.type && file.type.includes("audio")))) {
-            options = options || {};
-            options.isPtt = true;
-            options.asPtt = true;
-            options.type = 'ptt';
-            console.log(`🎯 [Cyborg] ${target}: Forçando modo PTT (Voz Gravada) para o áudio!`);
+      try {
+        if (exports[target] && typeof exports[target] === 'function') {
+          const original = exports[target];
+          
+          // Verifica se a propriedade pode ser escrita ou redefinida
+          const descriptor = Object.getOwnPropertyDescriptor(exports, target);
+          if (descriptor && !descriptor.writable && !descriptor.configurable) {
+            console.warn(`⚠️ [Cyborg] Propriedade ${target} não é editável no webpack exports.`);
+            return;
           }
-          return original.call(this, file, options);
-        };
+          
+          const patchedFn = function(file, options) {
+            // Se o arquivo for o nosso áudio gravado ou qualquer áudio vindo da extensão
+            if (file && (file.name === "recorded_audio.ogg" || (file.type && file.type.includes("audio")))) {
+              options = options || {};
+              options.isPtt = true;
+              options.asPtt = true;
+              options.type = 'ptt';
+              console.log(`🎯 [Cyborg] ${target}: Forçando modo PTT (Voz Gravada) para o áudio!`);
+            }
+            return original.call(this, file, options);
+          };
+          
+          // Preserva propriedades estáticas anexadas à função original
+          Object.keys(original).forEach(key => {
+            try { patchedFn[key] = original[key]; } catch(e) {}
+          });
+          
+          if (!descriptor || descriptor.writable) {
+            exports[target] = patchedFn;
+          } else if (descriptor.configurable) {
+            Object.defineProperty(exports, target, {
+              value: patchedFn,
+              writable: true,
+              configurable: true,
+              enumerable: descriptor.enumerable
+            });
+          }
+        }
+      } catch (err) {
+        console.error(`❌ [Cyborg] Erro ao aplicar patch em ${target}:`, err);
       }
     });
   }

@@ -3,6 +3,11 @@ console.log('🤖 SPA IA: Content Script v7.2 Ativo (Isolated World)');
 let isWorking = false;
 let isExtensionInvalidated = false;
 let currentTaskInvalid = false; // FLAG NOVA: Avisa se o número deu erro
+let isUnloading = false; // FLAG NOVA: Indica que a página está recarregando
+
+window.addEventListener('beforeunload', () => {
+  isUnloading = true;
+});
 
 function checkExtensionValid() {
   if (isExtensionInvalidated) return false;
@@ -60,56 +65,71 @@ async function handleDirectTask(task) {
     console.log('⏳ Verificando integridade do contato...');
     await sleep(2500); 
 
-    // 1ª Checagem: O Observer fantasma (lá embaixo) já pegou o modal de erro?
-    if (currentTaskInvalid) {
-        console.log('🛑 Número bloqueado (Não existe no WhatsApp). Pulando...');
-        if (checkExtensionValid()) chrome.runtime.sendMessage({ action: 'STATUS_INVALID_NUMBER' }).catch(() => { });
-        isWorking = false;
-        return; // Aborta tudo e foge antes de digitar no contato errado!
+    if (isUnloading) {
+      console.log("📴 Página está descarregando. Abortando execução no contexto antigo.");
+      return;
     }
 
-    // 2ª Checagem Dupla: Busca manual na tela (caso a net esteja lenta)
-    const modal = document.querySelector(SELECTORS.MODAL_ERROR);
-    if (modal) {
-       const text = modal.innerText.toLowerCase();
-       if (text.includes('não está no whatsapp') || 
-           text.includes('inválido') || 
-           text.includes('invalid') || 
-           text.includes('não é válido') || 
-           text.includes('not valid') || 
-           text.includes('não existe')) {
-           
-           const okBtn = Array.from(modal.querySelectorAll('button')).find(b => {
-             const t = b.innerText.toUpperCase();
-             return t.includes('OK') || t.includes('FECHAR') || t.includes('ENTENDI') || t.includes('CLOSE') || t.includes('DISMISS');
-           }) || modal.querySelector('button');
-           
-           if (okBtn) okBtn.click();
-           console.log('🛑 Número inválido detectado na checagem manual. Pulando...');
-           if (checkExtensionValid()) chrome.runtime.sendMessage({ action: 'STATUS_INVALID_NUMBER' }).catch(() => { });
-           isWorking = false;
-           return; // Aborta tudo!
-       }
-    }
+    // Se a página não recarregou, o active_task ainda está no storage.
+    // Lemos e removemos para garantir exclusividade da execução neste contexto.
+    const stored = await chrome.storage.local.get('active_task');
+    if (stored && stored.active_task) {
+      console.log("🟢 Nenhum recarregamento de página detectado. Executando tarefa no mesmo contexto.");
+      await chrome.storage.local.remove('active_task');
 
-    // Se passou daqui, o número existe e a tela já está no chat certo! Pode mandar bala.
-    const chatInput = await waitForSelector(SELECTORS.CHAT_INPUT, 30);
-    if (currentTaskInvalid) {
-        console.log('🛑 Número bloqueado detectado durante a espera. Pulando...');
-        if (checkExtensionValid()) chrome.runtime.sendMessage({ action: 'STATUS_INVALID_NUMBER' }).catch(() => { });
-        isWorking = false;
-        return; // Aborta e pula sem lançar erro!
-    }
-    if (!chatInput) {
-        console.warn('⚠️ [Cyborg] Chat não carregou dentro do tempo limite.');
-        if (checkExtensionValid()) {
-            chrome.runtime.sendMessage({ action: 'STEP_ERROR', error: 'Chat não carregou' }).catch(() => { });
-        }
-        isWorking = false;
-        return;
-    }
+      // 1ª Checagem: O Observer fantasma (lá embaixo) já pegou o modal de erro?
+      if (currentTaskInvalid) {
+          console.log('🛑 Número bloqueado (Não existe no WhatsApp). Pulando...');
+          if (checkExtensionValid()) chrome.runtime.sendMessage({ action: 'STATUS_INVALID_NUMBER' }).catch(() => { });
+          isWorking = false;
+          return; // Aborta tudo e foge antes de digitar no contato errado!
+      }
 
-    await executeTask(task);
+      // 2ª Checagem Dupla: Busca manual na tela (caso a net esteja lenta)
+      const modal = document.querySelector(SELECTORS.MODAL_ERROR);
+      if (modal) {
+         const text = modal.innerText.toLowerCase();
+         if (text.includes('não está no whatsapp') || 
+             text.includes('inválido') || 
+             text.includes('invalid') || 
+             text.includes('não é válido') || 
+             text.includes('not valid') || 
+             text.includes('não existe')) {
+             
+             const okBtn = Array.from(modal.querySelectorAll('button')).find(b => {
+               const t = b.innerText.toUpperCase();
+               return t.includes('OK') || t.includes('FECHAR') || t.includes('ENTENDI') || t.includes('CLOSE') || t.includes('DISMISS');
+             }) || modal.querySelector('button');
+             
+             if (okBtn) okBtn.click();
+             console.log('🛑 Número inválido detectado na checagem manual. Pulando...');
+             if (checkExtensionValid()) chrome.runtime.sendMessage({ action: 'STATUS_INVALID_NUMBER' }).catch(() => { });
+             isWorking = false;
+             return; // Aborta tudo!
+         }
+      }
+
+      // Se passou daqui, o número existe e a tela já está no chat certo! Pode mandar bala.
+      const chatInput = await waitForSelector(SELECTORS.CHAT_INPUT, 30);
+      if (currentTaskInvalid) {
+          console.log('🛑 Número bloqueado detectado durante a espera. Pulando...');
+          if (checkExtensionValid()) chrome.runtime.sendMessage({ action: 'STATUS_INVALID_NUMBER' }).catch(() => { });
+          isWorking = false;
+          return; // Aborta e pula sem lançar erro!
+      }
+      if (!chatInput) {
+          console.warn('⚠️ [Cyborg] Chat não carregou dentro do tempo limite.');
+          if (checkExtensionValid()) {
+              chrome.runtime.sendMessage({ action: 'STEP_ERROR', error: 'Chat não carregou' }).catch(() => { });
+          }
+          isWorking = false;
+          return;
+      }
+
+      await executeTask(task);
+    } else {
+      console.log("🟡 active_task já removido ou não encontrado. Presumindo que o novo contexto o assumiu.");
+    }
   } catch (err) {
     console.error('❌ Erro inesperado na automação:', err);
     if (checkExtensionValid()) {
@@ -123,52 +143,56 @@ async function handleDirectTask(task) {
 }
 
 async function executeTask(task) {
-  const input = await waitForSelector(SELECTORS.CHAT_INPUT, 30);
-  if (!input) {
-    console.warn('⚠️ [Cyborg] Campo de mensagem não encontrado.');
-    if (checkExtensionValid()) {
-      chrome.runtime.sendMessage({ action: 'STEP_ERROR', error: 'Campo de mensagem não encontrado' }).catch(() => { });
+  try {
+    const input = await waitForSelector(SELECTORS.CHAT_INPUT, 30);
+    if (!input) {
+      throw new Error("Campo de mensagem não encontrado");
     }
-    return;
-  }
 
-  await sleep(1500);
+    await sleep(1500);
 
-  const order = task.sendOrder || 'media_text_audio';
+    const order = task.sendOrder || 'media_text_audio';
 
-  if (order === 'media_text_audio') {
-    if (task.media) await handleMediaUpload(task.media);
-    if (task.message && task.message.trim() !== '') await handleTextOnly(task.message);
-    if (task.audio) await handleAudioUpload(task.audio);
-  } 
-  else if (order === 'text_media_audio') {
-    if (task.message && task.message.trim() !== '') await handleTextOnly(task.message);
-    if (task.media) await handleMediaUpload(task.media);
-    if (task.audio) await handleAudioUpload(task.audio);
-  }
-  else if (order === 'text_audio_media') {
-    if (task.message && task.message.trim() !== '') await handleTextOnly(task.message);
-    if (task.audio) await handleAudioUpload(task.audio);
-    if (task.media) await handleMediaUpload(task.media);
-  }
-  else if (order === 'audio_media_text') {
-    if (task.audio) await handleAudioUpload(task.audio);
-    if (task.media) await handleMediaUpload(task.media);
-    if (task.message && task.message.trim() !== '') await handleTextOnly(task.message);
-  }
-  else if (order === 'audio_text_media') {
-    if (task.audio) await handleAudioUpload(task.audio);
-    if (task.message && task.message.trim() !== '') await handleTextOnly(task.message);
-    if (task.media) await handleMediaUpload(task.media);
-  }
-  else if (order === 'media_audio_text') {
-    if (task.media) await handleMediaUpload(task.media);
-    if (task.audio) await handleAudioUpload(task.audio);
-    if (task.message && task.message.trim() !== '') await handleTextOnly(task.message);
-  }
+    if (order === 'media_text_audio') {
+      if (task.media) await handleMediaUpload(task.media);
+      if (task.message && task.message.trim() !== '') await handleTextOnly(task.message);
+      if (task.audio) await handleAudioUpload(task.audio);
+    } 
+    else if (order === 'text_media_audio') {
+      if (task.message && task.message.trim() !== '') await handleTextOnly(task.message);
+      if (task.media) await handleMediaUpload(task.media);
+      if (task.audio) await handleAudioUpload(task.audio);
+    }
+    else if (order === 'text_audio_media') {
+      if (task.message && task.message.trim() !== '') await handleTextOnly(task.message);
+      if (task.audio) await handleAudioUpload(task.audio);
+      if (task.media) await handleMediaUpload(task.media);
+    }
+    else if (order === 'audio_media_text') {
+      if (task.audio) await handleAudioUpload(task.audio);
+      if (task.media) await handleMediaUpload(task.media);
+      if (task.message && task.message.trim() !== '') await handleTextOnly(task.message);
+    }
+    else if (order === 'audio_text_media') {
+      if (task.audio) await handleAudioUpload(task.audio);
+      if (task.message && task.message.trim() !== '') await handleTextOnly(task.message);
+      if (task.media) await handleMediaUpload(task.media);
+    }
+    else if (order === 'media_audio_text') {
+      if (task.media) await handleMediaUpload(task.media);
+      if (task.audio) await handleAudioUpload(task.audio);
+      if (task.message && task.message.trim() !== '') await handleTextOnly(task.message);
+    }
 
-  if (checkExtensionValid()) {
-    chrome.runtime.sendMessage({ action: 'STEP_COMPLETED' }).catch(() => { });
+    console.log("✅ [Cyborg] Tarefa concluída com sucesso!");
+    if (checkExtensionValid()) {
+      chrome.runtime.sendMessage({ action: 'STEP_COMPLETED' }).catch(() => { });
+    }
+  } catch (err) {
+    console.error("❌ [Cyborg] Erro ao executar tarefa:", err);
+    if (checkExtensionValid()) {
+      chrome.runtime.sendMessage({ action: 'STEP_ERROR', error: err.message || 'Erro no envio' }).catch(() => { });
+    }
   }
 }
 
@@ -221,10 +245,7 @@ function base64ToFile(base64, type) {
   // SEGURANÇA: Evita que URLs vazias/undefined resultem em falha
   if (!base64 || typeof base64 !== 'string' || !base64.startsWith('data:')) {
     console.error("❌ [Cyborg] base64 inválido ou não inicializado recebido em base64ToFile:", base64);
-    if (checkExtensionValid()) {
-      chrome.runtime.sendMessage({ action: 'STEP_ERROR', error: `Arquivo de ${type} inválido ou não carregado na extensão.` }).catch(() => { });
-    }
-    return null;
+    throw new Error(`Arquivo de ${type} inválido ou não carregado na extensão.`);
   }
 
   try {
@@ -275,10 +296,7 @@ function base64ToFile(base64, type) {
     return new File([blob], fileName, { type: cleanMimeType });
   } catch (err) {
     console.error("❌ [Cyborg] Erro na decodificação base64:", err);
-    if (checkExtensionValid()) {
-      chrome.runtime.sendMessage({ action: 'STEP_ERROR', error: `Falha ao converter dados de ${type} em arquivo.` }).catch(() => { });
-    }
-    return null;
+    throw new Error(`Falha ao converter dados de ${type} em arquivo: ${err.message}`);
   }
 }
 
@@ -492,7 +510,9 @@ async function attachFileViaDrop(base64, type) {
 async function handleTextOnly(message) {
   console.log('[DEBUG] Injetando texto com quebras de linha via DataTransfer...');
   const input = document.querySelector(SELECTORS.CHAT_INPUT);
-  if (!input) return;
+  if (!input) {
+    throw new Error("Campo de entrada de texto não encontrado.");
+  }
   input.focus();
   
   const dataTransfer = new DataTransfer();
@@ -507,13 +527,16 @@ async function handleTextOnly(message) {
   setTimeout(() => {
     if (input.innerText.trim() === '') {
        document.execCommand('insertText', false, message);
-    }
+     }
   }, 300);
 
   await sleep(1000);
 
   const sendBtn = await waitForSelector(SELECTORS.SEND_BTN, 5);
-  if (sendBtn) (sendBtn.closest('button') || sendBtn).click();
+  if (!sendBtn) {
+    throw new Error("Botão de enviar texto não encontrado.");
+  }
+  (sendBtn.closest('button') || sendBtn).click();
   await sleep(1500);
 }
 
@@ -521,14 +544,10 @@ async function handleMediaUpload(base64) {
   const success = await attachFileViaDrop(base64, 'media');
   if (!success) {
     console.error('❌ [Cyborg] Falha ao carregar pré-visualização da mídia.');
-    if (checkExtensionValid()) {
-      chrome.runtime.sendMessage({ action: 'STEP_ERROR', error: 'Falha ao carregar pré-visualização da mídia.' }).catch(() => { });
-    }
-    return;
+    throw new Error("Falha ao carregar pré-visualização da mídia.");
   }
   
   // ⏳ AGUARDA A GERAÇÃO DE THUMBNAIL E PROCESSAMENTO PELO WHATSAPP WEB
-  // Vídeos e imagens grandes precisam de tempo para o WhatsApp gerar o blob interno
   console.log('⏳ [Cyborg] Aguardando estabilização e processamento da mídia...');
   await sleep(4500); 
   
@@ -558,10 +577,7 @@ async function handleMediaUpload(base64) {
 
   if (!sendBtn) {
     console.error('❌ [Cyborg] Botão enviar mídia não encontrado!');
-    if (checkExtensionValid()) {
-      chrome.runtime.sendMessage({ action: 'STEP_ERROR', error: 'Botão enviar mídia não encontrado' }).catch(() => { });
-    }
-    return;
+    throw new Error("Botão enviar mídia não encontrado.");
   }
   
   console.log('🚀 [Cyborg] Clicando no botão de enviar mídia...');
@@ -573,10 +589,7 @@ async function handleAudioUpload(base64) {
   const success = await attachFileViaDrop(base64, 'audio');
   if (!success) {
     console.error('❌ [Cyborg] Falha ao carregar pré-visualização do áudio.');
-    if (checkExtensionValid()) {
-      chrome.runtime.sendMessage({ action: 'STEP_ERROR', error: 'Falha ao carregar pré-visualização do áudio.' }).catch(() => { });
-    }
-    return;
+    throw new Error("Falha ao carregar pré-visualização do áudio.");
   }
   
   // ⏳ AGUARDA A ESTABILIZAÇÃO E PROCESSAMENTO DA NOTA DE VOZ
@@ -606,10 +619,7 @@ async function handleAudioUpload(base64) {
 
   if (!sendBtn) {
     console.error('❌ [Cyborg] Botão enviar áudio não encontrado!');
-    if (checkExtensionValid()) {
-      chrome.runtime.sendMessage({ action: 'STEP_ERROR', error: 'Botão enviar áudio não encontrado' }).catch(() => { });
-    }
-    return;
+    throw new Error("Botão enviar áudio não encontrado.");
   }
   
   console.log('🚀 [Cyborg] Clicando no botão de enviar áudio...');
@@ -647,3 +657,85 @@ const errorObserver = new MutationObserver(() => {
 });
 
 errorObserver.observe(document.body, { childList: true, subtree: true });
+
+// ==========================================
+// 🔄 [Cyborg] Rotinas de Recuperação pós Recarregamento
+// ==========================================
+async function checkAndRecoverTask() {
+  try {
+    const data = await chrome.storage.local.get('active_task');
+    if (data && data.active_task) {
+      const task = data.active_task;
+      console.log("🔄 [Cyborg] Tarefa pendente detectada no storage pós-recarregamento:", task);
+      
+      // Limpa imediatamente para assumir a exclusividade
+      await chrome.storage.local.remove('active_task');
+      runRecoveredTask(task);
+    }
+  } catch (e) {
+    console.error("❌ Erro ao verificar active_task na inicialização:", e);
+  }
+}
+
+async function runRecoveredTask(task) {
+  if (isWorking) return;
+  isWorking = true;
+  currentTaskInvalid = false;
+  
+  try {
+    console.log(`⏳ [Cyborg] Aguardando estabilização para o contato recuperado: ${task.name}...`);
+    await sleep(2500);
+
+    // Checagem manual de número inválido
+    const modal = document.querySelector(SELECTORS.MODAL_ERROR);
+    if (modal) {
+       const text = modal.innerText.toLowerCase();
+       if (text.includes('não está no whatsapp') || 
+           text.includes('inválido') || 
+           text.includes('invalid') || 
+           text.includes('não é válido') || 
+           text.includes('not valid') || 
+           text.includes('não existe')) {
+           
+           const okBtn = Array.from(modal.querySelectorAll('button')).find(b => {
+             const t = b.innerText.toUpperCase();
+             return t.includes('OK') || t.includes('FECHAR') || t.includes('ENTENDI') || t.includes('CLOSE') || t.includes('DISMISS');
+           }) || modal.querySelector('button');
+           
+           if (okBtn) okBtn.click();
+           console.log('🛑 Número inválido detectado na recuperação. Pulando...');
+           if (checkExtensionValid()) chrome.runtime.sendMessage({ action: 'STATUS_INVALID_NUMBER' }).catch(() => { });
+           isWorking = false;
+           return;
+       }
+    }
+
+    const chatInput = await waitForSelector(SELECTORS.CHAT_INPUT, 30);
+    if (currentTaskInvalid) {
+        console.log('🛑 Número bloqueado detectado durante a recuperação. Pulando...');
+        if (checkExtensionValid()) chrome.runtime.sendMessage({ action: 'STATUS_INVALID_NUMBER' }).catch(() => { });
+        isWorking = false;
+        return;
+    }
+    if (!chatInput) {
+        console.warn('⚠️ [Cyborg] Chat não carregou na recuperação dentro do tempo limite.');
+        if (checkExtensionValid()) {
+            chrome.runtime.sendMessage({ action: 'STEP_ERROR', error: 'Chat não carregou na recuperação' }).catch(() => { });
+        }
+        isWorking = false;
+        return;
+    }
+
+    await executeTask(task);
+  } catch (err) {
+    console.error('❌ Erro inesperado na automação recuperada:', err);
+    if (checkExtensionValid()) {
+      chrome.runtime.sendMessage({ action: 'STEP_ERROR', error: err.message || 'Erro na recuperação' }).catch(() => { });
+    }
+  } finally {
+    isWorking = false;
+  }
+}
+
+// Executa verificação suave com atraso para garantir inicialização de APIs da extensão
+setTimeout(checkAndRecoverTask, 1200);
