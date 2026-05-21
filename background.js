@@ -107,14 +107,19 @@ async function processQueue() {
     // Tratamento estético para nomes vazios (remove vírgulas flutuantes e espaços extras)
     let finalMessage = messageWithPlaceholder;
     if (safeName === '') {
-      // Remove espaços antes de vírgulas, ex: "Olá , tudo bem?" -> "Olá, tudo bem?"
-      finalMessage = finalMessage.replace(/\s+,\s*/g, ', ');
-      // Se a mensagem começar com uma vírgula devido ao nome estar no início, remove
-      finalMessage = finalMessage.replace(/^,\s*/, '');
-      // Se a mensagem terminar com uma vírgula devido ao nome estar no final, remove
-      finalMessage = finalMessage.replace(/,\s*$/, '');
-      // Consolida espaços duplos
+      // Remove vírgulas flutuantes que ficaram sozinhas
+      finalMessage = finalMessage.replace(/,\s*,/g, ',');
+      // Remove espaços antes de vírgulas e pontos
+      finalMessage = finalMessage.replace(/\s+([,.!?])/g, '$1');
+      // Se a mensagem começar com pontuação devido ao nome estar no início, remove
+      finalMessage = finalMessage.replace(/^[,.!?]\s*/, '');
+      // Se a mensagem terminar com pontuação estranha, limpa
+      finalMessage = finalMessage.replace(/\s*[,.!?]$/, '.');
+      // Consolida espaços duplos e trim
       finalMessage = finalMessage.replace(/\s+/g, ' ').trim();
+      
+      // Caso especial: "Olá , tudo bem?" -> "Olá, tudo bem?"
+      finalMessage = finalMessage.replace(/Olá\s*,\s*/gi, 'Olá, ');
     }
 
     if (config.aiEnabled && config.apiKey) {

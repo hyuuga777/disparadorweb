@@ -2,30 +2,25 @@
   console.log("🎤 [Cyborg] Webpack Hook ativado para PTT no MAIN world via Manifest...");
   
   function patchModule(exports) {
-    if (exports && exports.prepRawMedia) {
-      const originalPrep = exports.prepRawMedia;
-      exports.prepRawMedia = function(file, options) {
-        if (file && (file.name.includes("recorded_audio") || file.type.includes("audio"))) {
-          options = options || {};
-          options.isPtt = true;
-          options.asPtt = true;
-          console.log("🎯 [Cyborg] prepRawMedia: Forçando PTT para áudio!");
-        }
-        return originalPrep.call(this, file, options);
-      };
-    }
-    if (exports && exports.createOpaqueDataForRawMedia) {
-      const originalCreate = exports.createOpaqueDataForRawMedia;
-      exports.createOpaqueDataForRawMedia = function(file, options) {
-        if (file && (file.name.includes("recorded_audio") || file.type.includes("audio"))) {
-          options = options || {};
-          options.isPtt = true;
-          options.asPtt = true;
-          console.log("🎯 [Cyborg] createOpaqueDataForRawMedia: Forçando PTT para áudio!");
-        }
-        return originalCreate.call(this, file, options);
-      };
-    }
+    // Lista de funções que o WhatsApp usa para processar mídia e que podem conter a flag PTT
+    const targets = ['prepRawMedia', 'createOpaqueDataForRawMedia', 'processRawAudio', 'prepareRawAudio'];
+    
+    targets.forEach(target => {
+      if (exports && exports[target]) {
+        const original = exports[target];
+        exports[target] = function(file, options) {
+          // Se o arquivo for o nosso áudio gravado ou qualquer áudio vindo da extensão
+          if (file && (file.name === "recorded_audio.ogg" || (file.type && file.type.includes("audio")))) {
+            options = options || {};
+            options.isPtt = true;
+            options.asPtt = true;
+            options.type = 'ptt';
+            console.log(`🎯 [Cyborg] ${target}: Forçando modo PTT (Voz Gravada) para o áudio!`);
+          }
+          return original.call(this, file, options);
+        };
+      }
+    });
   }
 
   function applyHook(chunk) {

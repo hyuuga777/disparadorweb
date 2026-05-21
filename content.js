@@ -19,10 +19,10 @@ function checkExtensionValid() {
 }
 
 const SELECTORS = {
-  CHAT_INPUT: 'div[title="Digite uma mensagem"], div[title="Type a message"], div[aria-label="Mensagem"], div[aria-label="Type a message"], div[role="textbox"][contenteditable="true"], div[contenteditable="true"][data-tab="10"], footer div[contenteditable="true"]',
-  SEND_BTN: 'button span[data-icon="send"], span[data-icon="send-light"], button[aria-label="Enviar"], button[aria-label="Send"]',
-  MODAL_ERROR: 'div[role="dialog"]',
-  ATTACH_BTN: 'div[aria-label="Anexar"], div[aria-label="Attach"], [data-icon="plus"], [data-icon="add"], [data-icon="plus-rounded"], [data-testid="plus-rounded"], button[aria-label="Anexar"], button[aria-label="Attach"]',
+  CHAT_INPUT: 'div[title="Digite uma mensagem"], div[title="Type a message"], div[aria-label="Mensagem"], div[aria-label="Type a message"], div[role="textbox"][contenteditable="true"], div[contenteditable="true"][data-tab="10"], footer div[contenteditable="true"], #main footer div[contenteditable="true"]',
+  SEND_BTN: 'span[data-icon="send"], span[data-icon="send-light"], button[aria-label="Enviar"], button[aria-label="Send"], span[data-testid="send"], span[data-icon="last-msg-status-v-check"]',
+  MODAL_ERROR: 'div[role="dialog"], div.x1n2onr6.x1vjfegm',
+  ATTACH_BTN: 'div[aria-label="Anexar"], div[aria-label="Attach"], [data-icon="plus"], [data-icon="add"], [data-icon="plus-rounded"], [data-testid="plus-rounded"], button[aria-label="Anexar"], button[aria-label="Attach"], span[data-icon="plus"]',
   FILE_INPUTS: 'input[type="file"]',
 };
 
@@ -242,27 +242,31 @@ function base64ToFile(base64, type) {
       ia[i] = byteString.charCodeAt(i);
     }
     
-    // Se for vídeo, forçamos o tipo limpo 'video/mp4' para garantir que o Chrome renderize a thumbnail perfeitamente
+    let ext = 'file';
+    // Normaliza tipos MIME para garantir compatibilidade total
     if (cleanMimeType.includes('video/')) {
       cleanMimeType = 'video/mp4';
+      ext = 'mp4';
     }
-    // Se for imagem, também garantimos tipo limpo
     else if (cleanMimeType.includes('image/')) {
-      if (!cleanMimeType.includes('jpeg') && !cleanMimeType.includes('png') && !cleanMimeType.includes('webp') && !cleanMimeType.includes('gif')) {
+      if (cleanMimeType.includes('jpeg')) ext = 'jpg';
+      else if (cleanMimeType.includes('png')) ext = 'png';
+      else if (cleanMimeType.includes('webp')) ext = 'webp';
+      else if (cleanMimeType.includes('gif')) ext = 'gif';
+      else {
         cleanMimeType = 'image/jpeg';
+        ext = 'jpg';
       }
+    }
+    else if (cleanMimeType.includes('audio/')) {
+      cleanMimeType = 'audio/ogg; codecs=opus';
+      ext = 'ogg';
     }
 
     const blob = new Blob([ab], { type: cleanMimeType });
-    
-    let ext = 'file';
-    if (cleanMimeType.includes('image/')) ext = cleanMimeType.split('/')[1] || 'jpg';
-    else if (cleanMimeType.includes('video/')) ext = 'mp4';
-    else if (cleanMimeType.includes('audio/')) ext = 'ogg';
-
     let fileName = `upload.${ext}`;
 
-    // Para o áudio, forçamos o tipo OGG/OPUS e o nome recorded_audio para o interceptador de PTT atuar
+    // Para o áudio, força o nome recorded_audio para o interceptador de PTT atuar
     if (type === 'audio') {
       fileName = 'recorded_audio.ogg';
       return new File([blob], fileName, { type: 'audio/ogg; codecs=opus' });
@@ -285,7 +289,8 @@ function isPreviewOpened() {
     'div[aria-label="Adicione uma legenda"], ' +
     'div[aria-label="Add a caption"], ' +
     'div[aria-placeholder*="legenda"], ' +
-    'div[aria-placeholder*="caption"]'
+    'div[aria-placeholder*="caption"], ' +
+    'div[role="textbox"][aria-label*="legenda"]'
   );
   if (captionInput) return true;
 
@@ -295,34 +300,43 @@ function isPreviewOpened() {
     'span[data-icon="checkmark-medium"], ' +
     'span[data-icon="wds-ic-send-filled"], ' +
     'span[data-testid="wds-ic-send-filled"], ' +
+    'span[data-icon="send-light"], ' +
     'div[aria-label^="Enviar"], ' +
     'div[aria-label^="Send"], ' +
     'div[aria-label*="item selecionado"], ' +
     'button[aria-label^="Enviar"], ' +
-    'button[aria-label^="Send"]'
+    'button[aria-label^="Send"], ' +
+    '[data-testid="send"]'
   );
   for (let icon of icons) {
     let btn = icon.closest('div[role="button"]') || icon.closest('button') || icon;
     if (btn && (btn.offsetParent !== null || btn.getBoundingClientRect().width > 0)) {
-      // Exclui o botão de enviar comum da conversa
+      // Exclui o botão de enviar comum da conversa (que fica no footer)
       if (!btn.closest('footer')) {
         return true;
       }
     }
   }
 
-  // 3. Procura por elementos típicos do preview de mídia (ex: canvas da thumb, player de vídeo, ou botão fechar fora do footer)
+  // 3. Procura por elementos típicos do preview de mídia
   const previewElements = document.querySelectorAll(
     'div[style*="background-image"][class*="x"], ' +
     'div[class*="media-preview"], ' +
     'div[class*="x10l6t27"] canvas, ' +
-    'span[data-icon="close"]'
+    'span[data-icon="close"], ' +
+    'span[data-icon="x-viewer"], ' +
+    'div[aria-label="Visualização de mídia"], ' +
+    'div[aria-label="Media preview"]'
   );
   for (let el of previewElements) {
     if (!el.closest('#main') && !el.closest('footer')) {
       return true;
     }
   }
+
+  // 4. Checagem específica para áudio (PTT) - O preview de áudio é diferente
+  const audioPreview = document.querySelector('div[aria-label="Enviar mensagem de voz"], div[aria-label="Send voice message"], span[data-icon="ptt-check-blue"]');
+  if (audioPreview) return true;
 
   return false;
 }
@@ -425,11 +439,11 @@ async function attachFileViaDrop(base64, type) {
     
     triggerDragEvent(document.body, 'dragenter');
     triggerDragEvent(dropTarget, 'dragenter');
-    await sleep(100);
+    await sleep(150);
     
     triggerDragEvent(document.body, 'dragover');
     triggerDragEvent(dropTarget, 'dragover');
-    await sleep(150);
+    await sleep(200);
 
     // Tenta encontrar um overlay de drop ativo no DOM
     const dropOverlay = document.querySelector('div[style*="z-index"][style*="position: absolute"]') ||
@@ -444,16 +458,18 @@ async function attachFileViaDrop(base64, type) {
     if (dropOverlay) {
       console.log('🎯 [Cyborg] Overlay de Drop detectado! Efetuando Drop diretamente nele...');
       triggerDragEvent(dropOverlay, 'drop');
+      await sleep(100);
     } else {
       console.log('🤖 [Cyborg] Nenhum overlay de Drop visual localizado. Efetuando Drop nos alvos padrão...');
       triggerDragEvent(dropTarget, 'drop');
+      await sleep(100);
       triggerDragEvent(document.body, 'drop');
     }
 
     console.log('⏳ [Cyborg] Aguardando painel de preview do WhatsApp...');
     
-    // Aguarda até 3.5 segundos observando se o preview abriu
-    for (let i = 0; i < 18; i++) { // 18 * 200ms = 3600ms
+    // Aguarda até 5 segundos observando se o preview abriu
+    for (let i = 0; i < 25; i++) { // 25 * 200ms = 5000ms
       await sleep(200);
       if (isPreviewOpened()) {
         previewOpened = true;
@@ -511,9 +527,10 @@ async function handleMediaUpload(base64) {
     return;
   }
   
-  // ⏳ AGUARDA A GERAÇÃO DE THUMBNAIL E PROCESSAMENTO PELO WHATSAPP WEB (Evita crash do gerador de thumb interno)
-  console.log('⏳ [Cyborg] Aguardando estabilização e processamento da mídia (geração de thumbnail)...');
-  await sleep(2800); 
+  // ⏳ AGUARDA A GERAÇÃO DE THUMBNAIL E PROCESSAMENTO PELO WHATSAPP WEB
+  // Vídeos e imagens grandes precisam de tempo para o WhatsApp gerar o blob interno
+  console.log('⏳ [Cyborg] Aguardando estabilização e processamento da mídia...');
+  await sleep(4500); 
   
   const sendBtn = await waitForFunction(() => {
     const icons = document.querySelectorAll(
@@ -521,18 +538,23 @@ async function handleMediaUpload(base64) {
       'span[data-icon="checkmark-medium"], ' +
       'span[data-icon="wds-ic-send-filled"], ' +
       'span[data-testid="wds-ic-send-filled"], ' +
+      'span[data-icon="send-light"], ' +
       'div[aria-label^="Enviar"], ' +
       'div[aria-label^="Send"], ' +
       'div[aria-label*="item selecionado"], ' +
       'button[aria-label^="Enviar"], ' +
-      'button[aria-label^="Send"]'
+      'button[aria-label^="Send"], ' +
+      '[data-testid="send"]'
     );
     for (let icon of icons) {
       let btn = icon.closest('div[role="button"]') || icon.closest('button') || icon;
-      if (btn && (btn.offsetParent !== null || btn.getBoundingClientRect().width > 0)) return btn;
+      if (btn && (btn.offsetParent !== null || btn.getBoundingClientRect().width > 0)) {
+         // Garante que não é o botão do footer
+         if (!btn.closest('footer')) return btn;
+      }
     }
     return null;
-  }, 15, 'Botão Enviar Mídia');
+  }, 20, 'Botão Enviar Mídia');
 
   if (!sendBtn) {
     console.error('❌ [Cyborg] Botão enviar mídia não encontrado!');
@@ -541,8 +563,10 @@ async function handleMediaUpload(base64) {
     }
     return;
   }
+  
+  console.log('🚀 [Cyborg] Clicando no botão de enviar mídia...');
   sendBtn.click();
-  await sleep(3500);
+  await sleep(4000);
 }
 
 async function handleAudioUpload(base64) {
@@ -557,26 +581,28 @@ async function handleAudioUpload(base64) {
   
   // ⏳ AGUARDA A ESTABILIZAÇÃO E PROCESSAMENTO DA NOTA DE VOZ
   console.log('⏳ [Cyborg] Aguardando estabilização da nota de voz...');
-  await sleep(1500);
+  await sleep(2500);
   
   const sendBtn = await waitForFunction(() => {
+    // Para áudio PTT, o botão pode ter ícones específicos
     const icons = document.querySelectorAll(
       'span[data-icon="send"], ' +
       'span[data-icon="checkmark-medium"], ' +
-      'span[data-icon="wds-ic-send-filled"], ' +
-      'span[data-testid="wds-ic-send-filled"], ' +
+      'span[data-icon="ptt-check-blue"], ' +
+      'span[data-testid="send"], ' +
       'div[aria-label^="Enviar"], ' +
       'div[aria-label^="Send"], ' +
-      'div[aria-label*="item selecionado"], ' +
       'button[aria-label^="Enviar"], ' +
       'button[aria-label^="Send"]'
     );
     for (let icon of icons) {
       let btn = icon.closest('div[role="button"]') || icon.closest('button') || icon;
-      if (btn && (btn.offsetParent !== null || btn.getBoundingClientRect().width > 0)) return btn;
+      if (btn && (btn.offsetParent !== null || btn.getBoundingClientRect().width > 0)) {
+         if (!btn.closest('footer')) return btn;
+      }
     }
     return null;
-  }, 15, 'Botão Enviar Áudio');
+  }, 20, 'Botão Enviar Áudio');
 
   if (!sendBtn) {
     console.error('❌ [Cyborg] Botão enviar áudio não encontrado!');
@@ -585,8 +611,10 @@ async function handleAudioUpload(base64) {
     }
     return;
   }
+  
+  console.log('🚀 [Cyborg] Clicando no botão de enviar áudio...');
   sendBtn.click();
-  await sleep(3000);
+  await sleep(3500);
 }
 
 // ==========================================
